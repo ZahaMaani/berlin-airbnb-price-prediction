@@ -208,7 +208,6 @@ if submit_button:
         'host_response_rate': [f"{int(host_response_rate)}%"],
         'host_acceptance_rate': [f"{int(host_acceptance_rate)}%"],
         'host_listings_count': [host_listings_count],
-        'host_identity_verified': ['t' if host_is_superhost else 'f'],
         'neighbourhood_cleansed': [neighbourhood],
         'neighbourhood_group_cleansed': [neighbourhood_group],
         'property_type': [property_type],
