@@ -10,12 +10,12 @@ sys.path.append(os.path.abspath('..'))
 # --- LOAD RESOURCES ---
 @st.cache_resource
 def load_resources():
-    model = joblib.load('models/my_model.pkl')
-    # engineer.pkl now contains the Scaler and Means inside it!
+    model = joblib.load('models/rf_airbnb_final.pkl')
     engineer_pipeline = joblib.load('models/engineer.pkl') 
-    return model, engineer_pipeline
+    preprocessor = joblib.load('models/preprocessor.pkl')
+    return model, engineer_pipeline, preprocessor
 
-model, engineer_pipeline = load_resources()
+model, engineer_pipeline, preprocessor = load_resources()
 
 # Load them once at the start
 model, scaler, neigh_mean, global_mean = load_resources()
@@ -216,7 +216,6 @@ if submit_button:
     input_data['price'] = 0 # Dummy target
 
     # 2. Run Preprocessor (Cleaning)
-    preprocessor = AirbnbPreprocessor() 
     processed_data = preprocessor.transform(input_data)
 
     # 3. Run Engineer (Inference Mode)
