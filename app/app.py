@@ -126,14 +126,15 @@ with st.form("prediction_form"):
 
     # 2. HOST METRICS
     st.header("👤 Host Details")
-    col_h1, col_h2, col_h3 = st.columns(2)
     
+    col_h1, col_h2, col_h3 = st.columns(3)
     with col_h1:
         host_response_time = st.selectbox("Response Time", RESPONSE_TIMES)
         host_response_rate = st.slider("Response Rate (%)", 0.0, 100.0, 100.0)
         host_acceptance_rate = st.slider("Acceptance Rate (%)", 0.0, 100.0, 90.0)
-        
     with col_h2:
+        host_listings_count = st.number_input("Total Host Listings", 1, 5000, 1)
+    with col_h3:
         st.caption("Listings Breakdown")
         calc_entire = st.number_input("Entire Homes", 0, 500, 1)
         calc_private = st.number_input("Private Rooms", 0, 500, 0)
