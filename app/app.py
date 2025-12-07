@@ -5,11 +5,18 @@ import joblib
 import sys
 import os
 
-# --- 1. PATH CONFIGURATION (CRITICAL FOR DEPLOYMENT) ---
+# --- 1. PATH CONFIGURATION---
 current_dir = os.path.dirname(os.path.abspath(__file__))
+
 parent_dir = os.path.dirname(current_dir)
+
+src_dir = os.path.join(parent_dir, 'src')
+
 if parent_dir not in sys.path:
     sys.path.append(parent_dir)
+
+if src_dir not in sys.path:
+    sys.path.append(src_dir)
 
 from src.data_preprocessing import AirbnbPreprocessor
 from src.feature_engineering import AirbnbEngineer
