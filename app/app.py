@@ -5,27 +5,57 @@ import joblib
 import sys
 import os
 
-sys.path.append(os.path.abspath('..'))
+# --- 1. PATH CONFIGURATION---
+current_dir = os.path.dirname(os.path.abspath(__file__))
 
-# --- LOAD RESOURCES ---
-@st.cache_resource
-def load_resources():
-    model = joblib.load('models/my_model.pkl')
-    # engineer.pkl now contains the Scaler and Means inside it!
-    engineer_pipeline = joblib.load('models/engineer.pkl') 
-    return model, engineer_pipeline
+parent_dir = os.path.dirname(current_dir)
 
-model, engineer_pipeline = load_resources()
+src_dir = os.path.join(parent_dir, 'src')
 
-# Load them once at the start
-model, scaler, neigh_mean, global_mean = load_resources()
-# --- 1. SETUP ---
+if parent_dir not in sys.path:
+    sys.path.append(parent_dir)
+
+if src_dir not in sys.path:
+    sys.path.append(src_dir)
+
+from src.data_preprocessing import AirbnbPreprocessor
+from src.feature_engineering import AirbnbEngineer
+from src.modelling import AirbnbModel
+
+# --- 2. PAGE CONFIG ---
 st.set_page_config(page_title="Berlin Airbnb Price Predictor", page_icon="🏠")
-
 
 st.title("Berlin Airbnb Price Predictor 🏠")
 st.markdown("Enter the raw listing details below.")
 
+# --- 3. LOAD RESOURCES ---
+@st.cache_resource
+def load_resources():
+    models_dir = os.path.join(parent_dir, 'models')
+    
+    # Paths to files
+    model_path = os.path.join(models_dir, 'rf_airbnb_final.pkl')
+    engineer_path = os.path.join(models_dir, 'engineer.pkl')
+    preprocessor_path = os.path.join(models_dir, 'preprocessor.pkl')
+
+    # Verify existence
+    if not os.path.exists(model_path):
+        st.error(f"❌ Error: Model file not found at: {model_path}")
+        st.stop()
+        
+    # Load files
+    try:
+        model = joblib.load(model_path)
+        engineer = joblib.load(engineer_path)
+        preprocessor = joblib.load(preprocessor_path)
+        return model, engineer, preprocessor
+    except Exception as e:
+        st.error(f"❌ Error loading files: {e}")
+        st.stop()
+
+model, engineer_pipeline, preprocessor = load_resources()
+
+# --- 4. CONSTANTS ---
 PROPERTY_TYPES = ['Entire rental unit', 'Entire loft', 'Entire condo','Private room in rental unit', 'Private room in condo',
        'Entire guest suite', 'Entire home', 'Private room in loft','Entire townhouse', 'Private room in home','Private room in hostel', 
        'Shared room in hostel', 'Entire place', 'Entire guesthouse', 'Shared room in rental unit', 'Private room','Entire bungalow', 'Boat', 
@@ -169,8 +199,9 @@ with st.form("prediction_form"):
     # 6. SUBMIT
     submit_button = st.form_submit_button("Predict Price")
 
+# --- PREDICTION LOGIC ---
 if submit_button:
-    # 1. Capture Input
+    # 1. Create Dataframe
     input_data = pd.DataFrame({
         'host_response_time': [host_response_time],
         'host_response_rate': [f"{int(host_response_rate)}%"],
@@ -213,26 +244,42 @@ if submit_button:
         'reviews_per_month': [reviews_per_month]
     })
     
-    input_data['price'] = 0 # Dummy target
+    input_data['price'] = 0 
 
-    # 2. Run Preprocessor (Cleaning)
-    preprocessor = AirbnbPreprocessor() 
-    processed_data = preprocessor.transform(input_data)
+    st.info("Processing data...")
 
-    # 3. Run Engineer (Inference Mode)
-    engineered_data = engineer_pipeline.transform_inference(processed_data)
-
-    # 4. Align Columns (Fix Shape Mismatch)
-    if hasattr(model, "feature_names_in_"):
-        model_cols = model.feature_names_in_
-    else:
-        st.error("Model columns not found.")
-        st.stop()
+    try:
+        # 2. Preprocess (Clean)
+        processed_data = preprocessor.transform(input_data)
         
-    X_final = engineered_data.reindex(columns=model_cols, fill_value=0)
+        # 3. Engineer (Transform)
+        if hasattr(engineer_pipeline, 'transform_inference'):
+             engineered_data = engineer_pipeline.transform_inference(processed_data)
+        else:
+             engineer_pipeline.df = processed_data.copy()
+             engineer_pipeline.transform()
+             engineered_data = engineer_pipeline.df
+        
+        # 4. Align Columns (Fix Shape Mismatch)
+        # We need the model's feature names to align the columns
+        if hasattr(model, "feature_names_in_"):
+            model_cols = model.feature_names_in_
+            # Reindex ensures the input has exactly the columns the model expects
+            X_final = engineered_data.reindex(columns=model_cols, fill_value=0)
+        else:
+            st.warning("Model does not have feature_names_in_. Passing data directly.")
+            X_final = engineered_data
 
-    # 5. Predict
-    log_price = model.predict(X_final)[0]
-    price = np.expm1(log_price) 
+        # 5. Predict
+        log_price = model.predict(X_final)[0]
+        price = np.expm1(log_price) # Inverse of log1p
 
-    st.subheader(f"Estimated Price: €{price:,.2f}")
+        st.success(f"💰 Estimated Price: €{price:,.2f}")
+        
+        # Debug view
+        with st.expander("See processed data"):
+            st.dataframe(X_final)
+
+    except Exception as e:
+        st.error(f"Prediction Error: {e}")
+
