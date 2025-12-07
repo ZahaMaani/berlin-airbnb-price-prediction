@@ -9,6 +9,9 @@ import joblib
 class AirbnbEngineer:
     def __init__(self, df):
         self.df = df
+        self.scaler = MinMaxScaler()
+        self.neigh_mean = None
+        self.global_mean = None
         self.columns_to_transform =[
             'minimum_nights', 'maximum_nights', 'estimated_revenue_l365d',
             'reviews_per_month', 'number_of_reviews', 'number_of_reviews_ltm', 'number_of_reviews_l30d'
@@ -92,36 +95,31 @@ class AirbnbEngineer:
         return train_test_split(X, y, test_size=test_size, random_state=random_state)
     
     def scale_numeric_features(self, X_train, X_test):
-        scaler = MinMaxScaler()
+        self.scaler.fit(X_train[self.numeric_cols])
         
-        scaler.fit(X_train[self.numeric_cols])
-        X_train[self.numeric_cols] = scaler.transform(X_train[self.numeric_cols])
-        X_test[self.numeric_cols] = scaler.transform(X_test[self.numeric_cols])
-        
+        X_train[self.numeric_cols] = self.scaler.transform(X_train[self.numeric_cols])
+        X_test[self.numeric_cols] = self.scaler.transform(X_test[self.numeric_cols])
         return X_train, X_test
     
     def target_encode_neighbourhood(self, X_train, X_test, y_train):
-        # Calculate target mean on training set
         temp_train = X_train.copy()
         temp_train['log_price'] = y_train
-        neigh_mean = temp_train.groupby('full_neighbourhood')['log_price'].mean()
-        global_mean = y_train.mean()
         
-        # Map to Train and Test
-        X_train['full_neighbourhood_target'] = X_train['full_neighbourhood'].map(neigh_mean)
+        self.neigh_mean = temp_train.groupby('full_neighbourhood')['log_price'].mean()
+        self.global_mean = y_train.mean()
         
-        # Map to Test (fill new/unknown neighbourhoods with global mean)
-        X_test['full_neighbourhood_target'] = X_test['full_neighbourhood'].map(neigh_mean).fillna(global_mean)
+        X_train['full_neighbourhood_target'] = X_train['full_neighbourhood'].map(self.neigh_mean)
+        X_test['full_neighbourhood_target'] = X_test['full_neighbourhood'].map(self.neigh_mean).fillna(self.global_mean)
         
-        # Drop original columns
         cols_to_drop = ['neighbourhood_cleansed', 'neighbourhood_group_cleansed', 'full_neighbourhood']
         X_train.drop(cols_to_drop, axis=1, inplace=True)
         X_test.drop(cols_to_drop, axis=1, inplace=True)
-
-        print('Train data prepared.')
         
+        print('Train data prepared.')
+
         return X_train, X_test
 
+        
     def transform(self):
         #Apply log transformation for the price column for skewness
         self.df['log_price'] = self.process_target_variable(self.df['price'])
@@ -149,6 +147,25 @@ class AirbnbEngineer:
 
         print('Data encoded')
         print(self.df.info())
+
+    # --- FOR THE APP ---
+    def transform_inference(self, new_data):
+        # 1. Update internal df to the new data
+        self.df = new_data.copy()
+        
+        # 2. Run the basic transformations (Logs, Booleans, OneHot, Amenities)
+        self.transform() 
+        df_processed = self.df
+        
+        # 3. Apply Saved Target Encoding
+        df_processed['full_neighbourhood_target'] = df_processed['full_neighbourhood'].map(self.neigh_mean).fillna(self.global_mean)
+        cols_to_drop = ['neighbourhood_cleansed', 'neighbourhood_group_cleansed', 'full_neighbourhood']
+        df_processed.drop(cols_to_drop, axis=1, inplace=True, errors='ignore')
+
+        # 4. Apply Saved Scaling
+        df_processed[self.numeric_cols] = self.scaler.transform(df_processed[self.numeric_cols])
+        
+        return df_processed
 
     def save_preprocessor(self, filepath):
         #Saves this entire class object to a file
